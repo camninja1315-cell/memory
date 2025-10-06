@@ -1,0 +1,108 @@
+# Photon Trade Decider: Refined Adaptive Metrics & Scaling (Markup Notes)
+
+## 1. **Core Metrics Used**
+
+- **Current Price**: Scraped from Photon DOM.
+- **Liquidity**: Key filter for healthy coins (>18K preferred).
+- **Market Cap**: Provides context for scale of moves.
+- **Fresh Hold %**: Recent wallet % (high is bullish).
+- **Bundle Hold %**: Indicates top holder concentration.
+- **Bot Holders %**: High % can indicate bot risk/chop.
+- **Top 10 Hold %**: If >25%, avoid (whale risk).
+- **Buyers/Sellers Count**: Momentum, exit signals.
+- **Buy/Sell Ratio**: >1.08 bullish, <1 bearish, flat = trailing.
+- **Volume**: Both overall and wick/candle volume for pump/dip detection.
+- **Holders**: Stalling/dropping signals trailing/dead phase.
+
+---
+
+## 2. **Adaptive Metrics & Scaling Logic**
+
+### **A. Wick/Candle Analysis**
+- Scrape latest wick (O/H/L/C/Vol/Color) from TradingView legend DOM.
+- **Pump signal**: 3+ green candles in lookback, with volume spike.
+- **Dip signal**: 3+ red candles in lookback, with volume spike.
+- **Sideways**: Price move <2.5% in lookback, low/moderate volume.
+- **Decision Point**: Sideways but volume rising.
+
+### **B. Trailing/Dead Phase Detection**
+- Volume drops >80% from peak.
+- Holder count stalls/drops.
+- Liquidity thins (<15K).
+- Buy/Sell balance flat, low activity.
+- Red candle clusters.
+- If 3+ present, coin is likely dead/trailing.
+
+### **C. Trade Scaling Factor**
+- Compute based on:
+    - Price change magnitude (pump/dip).
+    - Volume ratio (current/avg).
+    - Fresh/bundle % pop/dip.
+    - Buy/sell ratio pop/dip.
+    - Volatility, ladder pattern detection.
+- Higher scaling for:
+    - Strong pump with healthy bundle/fresh/buyers.
+    - Lower scaling for trailing or chop.
+
+---
+
+## 3. **Entry/Exit Adaptive Logic**
+
+- **Entry (Buy):**
+    - Liquidity >18K
+    - Top 10 hold <25%
+    - Not trailing phase
+    - Pump signals (ladder, volume, buy/sell ratio, bundle/fresh %)
+    - Buy only if bundle <=80, buy/sell ratio >1.08, buyers > sellers
+
+- **Exit:**
+    - Price change >=+22% or <=-8%
+    - Buyers < sellers
+    - Scaling factor drops >20%
+    - Trailing phase detected
+
+---
+
+## 4. **Console Output Markup**
+
+- Logs every tick:
+    - Coin symbol, mint, type (ladder/dip/neutral), status (pumping, dumping, trailing, sideways, decision-point)
+    - Latest wick: O/H/L/C/Vol/Color
+    - Scaling factor, entry/exit triggers
+
+---
+
+## 5. **Best Practices for Scaling**
+
+- Use **peakVolume** context when judging volume spikes/drops.
+- Only increase trade size on confirmed pump ladder (not chop).
+- Use adaptive weights for fresh/bundle/volatility in scaling computation.
+- Avoid entries on trailing/chop signals.
+
+---
+
+## 6. **Example Status/Scaling Print**
+
+```
+SEEN COIN: Fartcoin, Mint: ..., Type: ladder, Status: pumping
+LATEST WICK: O102K H104K L100K C103K Vol:8.2K Color:green
+ScaleFactor: 1.32
+BUY IN at $0.000105 [2025-10-06 18:00], Type: ladder, Status: pumping, WickColor: green, ScaleFactor: 1.32
+```
+
+---
+
+## 7. **Extensible Metrics (for future adaptive upgrades)**
+
+- Add on-chain sentiment if available.
+- Track historical migration events for meme coins (bar index).
+- Integrate EMA/Bollinger or other TA overlays for confirmation.
+
+---
+
+## 8. **References**
+
+- [Photon DOM scraping for metrics](#)
+- [TradingView legend DOM for wick data](#)
+- [Solana meme coin trailing/pump patterns](#)
+- [Memory repo: Trailing Metric, ladder, dip patterns](#)
