@@ -1,0 +1,81 @@
+# Atlas Solana Meme Coin Scalp/Migration Pump Comparative Analysis
+## Session Log Date: 2025-10-03
+
+---
+
+## Comparative Table (Dashboard + Deep Data)
+
+| Coin         | Migration | Liquidity | Holders | Bot % | Top 10 % | Fresh % | Bundle % | Buyers/Sellers | Buy Vol | Sell Vol | Price Action | Why Pumped/Failed | Scalping Window? |
+|--------------|-----------|-----------|---------|-------|----------|---------|----------|----------------|---------|----------|--------------|-------------------|------------------|
+| **8BIT**     | No        | $28-33K   | 614-673 | 34-38%| 15-18%   | 7.6-7.7%| 5-8%     | 209/137        | $14K    | $13-17K  | Pump, base, 2nd pump | Fresh % rising, buyers dominated | Yes (base phase) |
+| **INNOVATIVE**| No       | $21K      | 382     | 28%   | 18.4%    | 5.7%    | 9%       | 24/20          | $1.4K   | $1.6K    | No pump, faded | Low liquidity, low fresh %, no buyers | No |
+| **SOMBRERO** | No        | $40K      | 614     | 62%   | 21%      | <6%     | 5%       | 187/184        | $14K    | $17K     | Pump, dump    | Bot % high, fresh % low | Scalp only |
+| **RANDY**    | Yes       | $32K      | 1100+   | 41%   | 26%      | >20%    | 4%       | 350/250        | $20K    | $12K     | Migration-dip-pop, multi pump | Migration, fresh % surge | Yes (post migration) |
+| **GWACIAS**  | Yes       | $35K      | 1200+   | 30%   | 25%      | >10%    | 5%       | 400/280        | $20K+   | $15K     | Pump, held longer | Fresh % climbing, buyers strong | Yes (migration pop) |
+| **SMB**      | No        | $18K      | 321     | 26%   | 22.8%    | 5.8%    | 35%      | 53/42          | $4.5K   | $2.6K    | Fast pump, dump | Bundle pump, weak fresh % | Scalp only |
+| **LAMP**     | No        | $29K      | 317     | 45%   | 25.4%    | 5.84%   | 26%      | 247/171        | $23K    | $24K     | Pump, correction | Buyers dominated, no fresh % | Brief scalp |
+| **PVE**      | No        | $51K      | 1039    | 31%   | 16.4%    | 4.56%   | 12.9%    | 172/148        | $20K    | $18K     | Pump, chop     | Liquidity strong, but no fresh % | Brief scalp |
+| **0/**       | No        | $19-33K   | 150-221 | 43-58%| 22-23%   | 7-8.6%  | 8-11%    | 27/48, 370/239 | $50K    | $39K     | Pump, sharp dump| Bot % surged, fresh % faded | Scalp only |
+| **HERO**     | Yes       | $37-44K   | 593-764 | 42%   | 17-19%   | 2.72-3.39%| 10-11% | 363/246, 315/203| $28-29K | $28-24K  | Pump, no dump  | Migration hype, strong liquidity, decentralized, community anti-dump | Yes (migration pop) |
+
+---
+
+## Patterns & Exceptions
+
+### Patterns for Scalpable Migration/Dump Pumps
+- **Migration event with hype** triggers a pump even if fresh wallet % is low, IF liquidity is strong and top holders are decentralized.
+- **Scalping window** opens right after migration or first dip, as buyers rush in and volume spikes.
+- **Exit quickly** if fresh wallet % does not rise, or if bot % climbs and sell volume surges.
+
+### Patterns for Failed/Chop Moves
+- **Low fresh wallet % (<8%)** with no migration or hype = no pump, chop or fade.
+- **High bot % (>50%)** = pump/dump, scalp only.
+- **High bundle %** works for quick pumps, but not for multi-phase moves unless paired with fresh wallets.
+- **Low liquidity (<$25K)** = fade risk.
+
+### Exceptions to Fresh Wallet Rule
+- **Migration pumps (HERO):** Can run with low fresh wallet % if liquidity, decentralization, and community incentives are strong.
+- **Whale/repeat buyer moves:** Sometimes repeat buyers and whales drive pumps without new wallets; these are scalp-only opportunities.
+
+---
+
+## Refined Entry Filter
+
+- **Scalp Entry:** Migration or fresh liquidity event, buy volume surging, decentralized holders, sellers not dominating.
+- **Swing Entry:** Only if fresh wallet % rises above 8% AND stays strong after migration/base.
+- **Avoid:** Low liquidity, high bot %, sellers > buyers, and flat fresh wallet % post-dip.
+
+---
+
+## Improvements
+
+- Layer **migration event filter** on top of wallet churn/fresh % filter.
+- Use **liquidity, buy volume, and top holder decentralization** to identify safe scalp windows.
+- Always check for **community/staking/LP incentives** and social sentiment on migration coins.
+- Set **exit alerts** for rising bot % or sell volume—and avoid holding through chop.
+- Monitor **migration announcements and liquidity incentives** via social feeds and project Discord/Twitter.
+- **Automate alerts** for base formation and buy volume surges post-migration.
+- **Track repeat buyer/whale activity** in addition to fresh wallet churn.
+
+---
+
+## Atlas Scalp Filter (2025-10-03)
+
+```
+- Migration event in last 90 minutes OR
+- Liquidity >$25K AND
+- Top 10 hold % <25% AND
+- Buy volume surging (>8K) AND
+- Sellers not dominating AND
+- (Fresh wallet % >8% for swing, OR high buy volume for scalp)
+- Avoid if bot % >50% or liquidity < $18K
+```
+
+---
+
+## Persistent Knowledge
+
+All coin outcomes, trade patterns, filter logic, and exceptions are logged.  
+Ready for import into Solana-meme-coin-Trade-bot or future session restoration.
+
+---
