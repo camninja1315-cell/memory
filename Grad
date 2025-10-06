@@ -1,0 +1,58 @@
+// ==UserScript==
+// @name         Photon Memescope Graduated Tab Opener (Graduated Only)
+// @namespace    http://tampermonkey.net/
+// @version      1.6
+// @description  Only finds and opens coins in the GRADUATED column (far right) on Photon Memescope. Futureproof selectors, logs SEEN.
+// @author       camninja1315-cell x Atlas
+// @match        https://photon-sol.tinyastro.io/en/memescope*
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    let openedMints = new Set();
+
+    function getGraduatedColumnCards() {
+        // Find all columns
+        const columns = Array.from(document.querySelectorAll('.IkXVawB0ALMCnMdJvOFY'));
+        // Find the column whose header text is "GRADUATED" (case-insensitive)
+        const graduatedCol = columns.find(col =>
+            col.querySelector('h2') &&
+            col.querySelector('h2').innerText.trim().toLowerCase() === 'graduated'
+        );
+        if (!graduatedCol) return [];
+        // Get all coin cards inside
+        return Array.from(graduatedCol.querySelectorAll('.VTmpJ0jdbJuSJQ4HKGlN'));
+    }
+
+    function openCoinTab(card) {
+        let symbol = card.querySelector('.siDxb5Gcy0nyxGjDtRQj')?.innerText.trim() || 'Unknown';
+        let mint = card.querySelector('[data-address]')?.getAttribute('data-address') || '';
+        let linkElem = card.querySelector('a.kZ551pEiiCmBLd2UhVP_');
+        let url = linkElem ? (linkElem.href.startsWith('/') ? window.location.origin + linkElem.getAttribute('href') : linkElem.href) : null;
+
+        // Always print SEEN coins
+        console.log(`SEEN (Graduated): ${symbol} (Mint: ${mint})`);
+
+        // Only open/click if not already done
+        if (mint && !openedMints.has(mint)) {
+            if (url) {
+                window.open(url, '_blank');
+                console.log(`Opened tab for GRADUATED coin: Mint=${mint}, Symbol=${symbol}, URL=${url}`);
+            } else {
+                card.click();
+                console.log(`Simulated click for GRADUATED coin: Mint=${mint}, Symbol=${symbol}`);
+            }
+            openedMints.add(mint);
+        }
+    }
+
+    function runOpener() {
+        const cards = getGraduatedColumnCards();
+        cards.forEach(card => openCoinTab(card));
+    }
+
+    setInterval(runOpener, 10000); // Every 10 seconds
+    runOpener(); // Also run immediately on load
+})();
