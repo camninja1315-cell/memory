@@ -1,0 +1,105 @@
+# Solana Meme Coin Pump Meta & Scalper Bot Reference
+
+## 1. Key Meta Insights
+
+- **Successful pumps almost always occur AFTER DEX Paid (trading enabled) and migration, ideally simultaneously.**
+- **No coin in the dataset pumped before DEX Paid was enabled.**
+- **Delay between migration and DEX Paid decreases pump odds.**
+- **Pump window:** Highest probability for rocket moves is 5–25 minutes after DEX Paid, with rare delayed pops up to ~40 minutes.
+
+---
+
+## 2. Balanced Filter for Catching Pumps
+
+| Filter          | Range/Criterion             | Why?                            |
+|-----------------|----------------------------|----------------------------------|
+| Tab             | Paid/Graduating, <60 min   | Catch fresh coins                |
+| Market Cap      | $20K–$160K                 | Room to pump, not too risky      |
+| Liquidity       | $18K–$60K                  | Pumpable, not rug-prone          |
+| Volume          | >$8K last hour             | Active market, scalpable         |
+| Holders         | >80, rising                | FOMO potential                   |
+| Buy/Sell Ratio  | Buys >1.1x sells, early    | Uptrend momentum                 |
+| Chart           | 2+ green candles/vol spike | Signal of pump start             |
+| Migration Paid  | Simultaneous/close         | Higher pump odds                 |
+| Whale Sells     | No early whale SS clusters | Avoid instant dumps/rugs         |
+
+---
+
+## 3. Pump Window & Success Rate
+
+| Time Since Paid | % of Successful Pumps | Action                  |
+|-----------------|----------------------|-------------------------|
+| 0–10 min        | ~70%                 | Highest chance          |
+| 10–25 min       | ~20%                 | Good, but watch for dump|
+| 25–40 min       | ~10%                 | Rare, only if new FOMO  |
+| >40 min         | <1%                  | Usually flat/dump       |
+
+- **Expect 3–6 good candidates per hour using these filters.**
+- **Most pumps peak within first 10–20 minutes, then correct/dump.**
+- **Secondary pops possible if volume/holders reignite.**
+
+---
+
+## 4. Advanced Meta Data Points
+
+- **Security:** LP Burned, Mint/Freeze Authority Disabled
+- **Top 10 Holders:** <40% is best; >45% is a risk
+- **Holder distribution:** Decentralized = stronger pump
+- **TXN Speed/Density:** Rapid-fire TXNs at launch = FOMO
+- **Social Hype:** Twitter/Discord spikes can precede pump
+- **Orderbook:** Thin = easier pump, fat = resistance
+- **Meta Cycles:** Trending memes/themes pump harder
+
+---
+
+## 5. Practical Checklist for Scalper Bot
+
+1. **Monitor Paid tab for new coins (<60 min)**
+2. **Filter for MC $20K–$160K, Liq $18K–$60K, Vol >$8K, Holders >80**
+3. **Check for 2+ green candles and volume spike at launch**
+4. **Enter if buy volume leads and no whale/dev exits**
+5. **Exit on first cluster of red candles/SS bubbles or if sell volume overtakes buys**
+6. **For longer holds, watch for ongoing holder/volume growth, new social hype, and absence of early dump signals**
+
+---
+
+## 6. Example Pump Patterns (from dataset)
+
+| Coin      | MC      | Liq   | Vol   | Holders | TXNs | Buys/Sells | Pump Timing | Outcome         |
+|-----------|---------|-------|-------|---------|------|------------|-------------|-----------------|
+| CLEO      | 135K    | 46K   | 118K  | 669     | 1441 | 803/638    | ~7 min      | Instant rocket  |
+| XIAO      | 52K     | 29K   | 372K  | 399     | 3454 | 1703/1751  | ~10 min     | Rocket/dump     |
+| PikAlchu  | 115K    | 42K   | 45K   | 507     | 584  | 341/243    | ~12 min     | Rocket          |
+| SHIFT     | 106K    | 41K   | 167K  | 513     | 1411 | 780/631    | ~10 min     | Rocket/correct  |
+| mCAP      | 180K    | 53K   | 65K   | 821     | 632  | 329/303    | ~40 min     | Delayed pop     |
+| BLOOMER   | 54K     | 29K   | 25K   | 110     | 335  | 147/188    | Flat/dump   | No pump         |
+
+---
+
+## 7. Scalper Bot Logic (Pseudocode)
+
+```python
+if coin.is_new_paid() and
+    20_000 < coin.market_cap < 160_000 and
+    18_000 < coin.liquidity < 60_000 and
+    coin.volume_last_hour > 8_000 and
+    coin.holders > 80 and
+    coin.buy_volume > coin.sell_volume * 1.1 and
+    coin.has_volume_spike() and
+    coin.has_green_candles(2):
+    enter_trade()
+    monitor_for_red_candle_cluster_or_sell_surge()
+    if detected:
+        exit_trade()
+```
+
+---
+
+## 8. Data Reference Links
+
+- [CoinGecko Solana Meme Coins](https://www.coingecko.com/en/categories/solana-meme-coins)
+- [Solana Meme Coins - Coinranking](https://coinranking.com/coins/solana-meme)
+
+---
+
+**Use this file as your meta-reference when designing your scalper bot. Update it as new patterns and edge cases emerge!**
