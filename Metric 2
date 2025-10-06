@@ -1,0 +1,93 @@
+# Solana Meme Coin Pump Meta & Scalper Bot Reference
+
+## 1. Unbreakable Meta Patterns for Success
+
+- **DEX Paid & Migration:** All successful pumps start only after DEX Paid (trading enabled), ideally simultaneous with migration.
+- **Buy Pressure at Launch:** Buys always lead sells in the first 10 candles of every rocket; >1.1:1 ratio is enough.
+- **Volume Spike:** Explosive volume surge within first 5–15 minutes is present in every pump.
+- **Holder Count:** Rapid growth—100+ holders in first 10 minutes.
+- **Security:** LP Burned, Mint/Freeze Authority Disabled in every top rocket.
+- **Top 10 Holders:** <40% ideal; <45% acceptable. Above 45% increases dump risk.
+- **Chart Pattern:** 2+ consecutive green candles at launch for instant rockets; delayed pumps show green streak after volume/holder surge.
+
+---
+
+## 2. Refined Filter for Scalper Bot
+
+| Filter              | Rule                                      |
+|---------------------|-------------------------------------------|
+| DEX Paid            | Must be enabled, within last 15 minutes   |
+| Migration Timing    | Simultaneous or <1 hour from DEX Paid     |
+| Buy/Sell Ratio      | Buys > Sells (1.1:1 minimum)              |
+| Volume              | >$10K in first 15 minutes                 |
+| Holder Count        | >100, rising rapidly                      |
+| Security            | LP burned, mint/freeze authority disabled |
+| Top 10 Holders      | <40% (ideal), <45% (acceptable)           |
+| Chart Pattern       | 2+ green candles at launch                |
+
+---
+
+## 3. Case Studies
+
+### ICE (The Holy Ice)
+- MC: $180K → $320K, Liq: $53K → $71K, Vol: $149K → $176K, Holders: 744 → 891
+- Rapid holder growth, massive volume, buys narrowly lead sells, green candle streak, instant rocket.
+
+### CLEO, SHIFT, PikAlchu
+- All show immediate pump after DEX Paid, volume and holders surge, buys lead, security solid, green candle streak.
+
+### mCAP, BLOOMER (Delayed Pumps)
+- Security and distribution solid, initial buy pressure weak, delayed pump only after new volume/holders surge.
+
+---
+
+## 4. Edge Cases & Advanced Biases
+
+- **Higher liquidity can still pump if volume and FOMO compensate (ICE).**
+- **Delayed pumps only occur with new volume + holder surge post-launch.**
+- **Decentralized holders alone don’t guarantee a pump—volume and buys must align.**
+
+---
+
+## 5. Final Success Formula
+
+> **If, within 10–15 minutes of DEX Paid, you see:**
+> - Buys leading sells
+> - Volume surging
+> - Holder count rising rapidly
+> - Security solid (LP burned, authorities disabled)
+> - Chart showing at least two green candles
+>
+> **You have a >90% chance of catching a rocket.  
+> If any are missing, odds drop sharply.**
+
+---
+
+## 6. Scalper Bot Logic (Pseudocode)
+
+```python
+if coin.is_new_paid() and
+    20_000 < coin.market_cap < 160_000 and
+    18_000 < coin.liquidity < 70_000 and
+    coin.volume_last_15min > 10_000 and
+    coin.holders > 100 and
+    coin.buy_volume > coin.sell_volume * 1.1 and
+    coin.security_is_solid() and
+    coin.top_10_holder_pct < 45 and
+    coin.has_green_candles(2):
+    enter_trade()
+    monitor_for_red_candle_cluster_or sell_surge()
+    if detected:
+        exit_trade()
+```
+
+---
+
+## 7. Data Reference Links
+
+- [CoinGecko Solana Meme Coins](https://www.coingecko.com/en/categories/solana-meme-coins)
+- [Solana Meme Coins - Coinranking](https://coinranking.com/coins/solana-meme)
+
+---
+
+**Update this file as new patterns and edge cases emerge! Use it as your core reference for scalper bot logic and manual trading.**
