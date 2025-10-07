@@ -1,0 +1,159 @@
+# Solana Trading Bot - Project Summary & Next Steps
+
+**User:** @camninja1315-cell
+**Session End Date:** 2025-10-07 02:25:07 UTC
+**Current Bot Version:** 4.4 - The Profit Taker
+
+---
+
+### Project Goal
+
+To develop a profitable, automated trading bot for Solana meme coins on the Photon platform, operating as a Tampermonkey userscript. The bot uses a layered logic system for entries, risk management, and profit-taking.
+
+### Current Bot Logic (Version 4.4)
+
+The bot's intelligence is built on several key components that work in concert:
+
+1.  **Entry Signal (`MOMENTUM_RIDE`):** The bot only enters trades when the market is in a confirmed `PUMPING` state with strong underlying buy pressure.
+2.  **Entry Filter (`isPeakPump`):** A critical safety feature that prevents the bot from entering a trade if the pump looks weak or exhaustive (i.e., the buy/sell volume ratio is poor), even if the price is rising.
+3.  **Risk Management Exit (`Momentum Guard`):** If a trade is entered and the `PUMPING` state is lost before significant profit is made, this rule exits the trade immediately to cut losses short.
+4.  **Profit-Taking Exit (`Profit Lock`):** A dynamic, trailing-stop-like mechanism. Once a trade's profit exceeds a set peak (`PROFIT_LOCK_MIN_PEAK_PNL`), this rule will exit the trade if the profit then drops by a certain amount from that peak, securing the gains.
+5.  **Testing Framework (`PAPER_TRADING_MODE`):** Allows the bot to run its full logic on live markets—logging all intended actions and sending alerts—without executing real trades, enabling risk-free testing and refinement.
+
+### Summary of Last Session's Tests (v4.4)
+
+The latest paper trading session provided excellent data, validating the effectiveness of our current layered logic across different market scenarios.
+
+*   **Trade 1: The "REVU" Fakeout (`pasted26.txt`)**
+    *   **Action:** The bot entered a trade that peaked at +5.78% before reversing.
+    *   **Logic Triggered:** The `Momentum Guard` executed a sell at -3.83% when the `PUMPING` state was lost.
+    *   **Outcome:** **Success.** The bot correctly identified a failed pump and cut the loss, preventing it from hitting the -10% stop loss.
+
+*   **Trade 2: The "PFF" Winner (`pasted27.txt`)**
+    *   **Action:** The bot entered a strong uptrend that ran to a peak profit of **+26.55%**.
+    *   **Logic Triggered:** When the profit dipped from the peak to +17.85% (a drop of ~9%), the new `Profit Lock` rule triggered an exit.
+    *   **Outcome:** **Perfect Success.** The bot secured a significant **+17.85% gain**, intelligently taking profit at the first sign of a reversal from the peak. This is the exact behavior the `Profit Lock` was designed for.
+
+*   **Observation: The "Missed" Pump (`pasted25.txt`)**
+    *   **Action:** The bot observed a pump but refused to enter.
+    *   **Logic Triggered:** The `isPeakPump` filter was activated because the buy/sell volume ratio was consistently poor (< 1.1), indicating a high-risk, low-quality pump.
+    *   **Outcome:** **Success.** The bot demonstrated discipline by correctly identifying and avoiding a risky trade, prioritizing capital preservation over chasing a weak signal.
+
+### Next Steps
+
+The v4.4 logic is performing exceptionally well. The combination of entry filtering, risk management, and profit-taking is working harmoniously.
+
+1.  **Continue Paper Trading:** The immediate goal is to continue running Version 4.4 in `PAPER_TRADING_MODE` to gather more data on its performance across a wider variety of volatile coins.
+2.  **Data Analysis:** Collect more winning and losing trade logs. This will help us confirm the robustness of the strategy and build statistical confidence.
+3.  **Parameter Tuning:** After gathering more data, we can consider fine-tuning the `CONFIG` values (e.g., `PROFIT_LOCK_MIN_PEAK_PNL`, `PROFIT_LOCK_DROP_PCT`) to further optimize performance, if necessary.
+
+The bot is in a very strong state. The focus now is on observation and data-driven refinement.
+
+---
+
+### Current Code (Version 4.4)
+
+```javascript
+// ==UserScript==
+// @name         Solana Meme Coin Trading Bot Logic
+// @namespace    http://tampermonkey.net/
+// @version      4.4
+// @description  The Profit Taker. Introduces a "Profit Lock" exit condition. If a trade reaches a significant peak profit, this logic will exit if the PnL drops by a set amount from that peak, securing gains.
+// @author       camninja1315-cell & Copilot
+// @match        https://photon-sol.tinyastro.io/en/lp/*
+// @grant        none
+// @run-at       document-idle
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    function getTimestamp() { return new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC'; }
+    console.log(`[${getTimestamp()}] --- Solana Meme Coin Bot Initialized (v4.4 - The Profit Taker) ---`);
+
+    const CONFIG = {
+        // --- Core Settings ---
+        PAPER_TRADING_MODE: true,
+        DISCORD_WEBHOOK_URL: "https://canary.discord.com/api/webhooks/1420920608992137267/T82i9UpYJRC8RxhDd399r72khFtV4aaKZIvaI4oBL-BVHcVeAR1MuMJPicZcpoUz6GL1",
+        CHECK_INTERVAL_MS: 3000,
+
+        // --- Pre-Trade Rules ---
+        MIN_LIQUIDITY: 20000, MAX_TOP_10_HOLDERS_PCT: 30, MAX_BOT_HOLDERS_PCT: 50,
+
+        // --- Standard Exit Rules ---
+        TAKE_PROFIT_PCT: 40, // Increased to give Profit Lock room to work
+        STOP_LOSS_PCT: -10,
+
+        // --- NEW V4.4: Profit Lock ---
+        PROFIT_LOCK_MIN_PEAK_PNL: 15, // Activates after PnL has peaked above 15%
+        PROFIT_LOCK_DROP_PCT: 7,     // Exits if PnL drops 7% from the peak (e.g. from +20% peak to +13%)
+
+        // --- State & Signal Analysis ---
+        MC_HISTORY_LENGTH: 12, STATE_CHANGE_THRESHOLD_PUMP: 8, STATE_CHANGE_THRESHOLD_DUMP: -8, SIGNAL_CONFIRMATION_COUNT: 2,
+
+        // --- Strategy-Specific Exits & Re-Entry ---
+        PROFIT_STAGNATION_CHECKS: 5, PROFIT_STAGNATION_MIN_PNL: 5,
+        MOMENTUM_LOST_EXIT_THRESHOLD_PNL: 3,
+        RE_ENTRY_PULLBACK_PCT: -10, RE_ENTRY_MIN_WAIT_MS: 90000,
+    };
+
+    if (CONFIG.PAPER_TRADING_MODE) { console.log('%c[PAPER TRADING MODE ACTIVATED] No real trades will be executed.', 'color: #FFA500; font-weight: bold; font-size: 14px;'); }
+
+    let tradeState = { inTrade: false, tradeType: null, entryMarketCap: 0, peakPnl: 0, stagnationCounter: 0, marketCapHistory: [] };
+    let coinMemory = {};
+    let pendingSignal = { type: null, confirmationCount: 0 };
+
+    // --- Data Scraping, State Analysis, Strategy & Filters (Unchanged) ---
+    function parseValue(text) { if (typeof text !== 'string') return null; let v = parseFloat(text.replace(/[\$,%]/g, '')); if (text.toUpperCase().includes('K')) v *= 1000; else if (text.toUpperCase().includes('M')) v *= 1000000; return isNaN(v) ? null : v; }
+    function formatValue(num) { if (!num) return '$0'; if (num >= 1000000) return `$${(num / 1000000).toFixed(2)}M`; if (num >= 1000) return `$${(num / 1000).toFixed(1)}K`; return `$${num.toFixed(0)}`; }
+    function getCoinVisualData() { const nameElement = document.querySelector('.p-show__pair__cur'); const imageElement = document.querySelector('.p-show__bar__thumb img'); return { name: nameElement ? nameElement.textContent.trim() : 'Unknown Coin', image: imageElement ? imageElement.src : '' }; }
+    function getCoinData() { const d = {}; const getSecurityText = (kind) => (document.querySelector(`.js-security-item[data-kind="${kind}"]`)?.textContent || '').toLowerCase(); d.isLpBurned = (parseValue(getSecurityText('lp_burned_perc')) || 0) >= 99; d.isMintDisabled = getSecurityText('mint_authority') === 'disabled'; d.isFreezeDisabled = getSecurityText('freeze_authority') === 'disabled'; d.isDexPaid = getSecurityText('dex_s') === 'yes'; d.liquidity = parseValue(document.querySelector('.p-show__widget__td__value[data-cable-val="usdLiquidity"]')?.textContent); d.marketCap = parseValue(document.querySelector('.p-show__widget__td__value[data-cable-val="mktCapVal"]')?.textContent); d.holderCount = parseValue(document.querySelector('.g9zXUaTbC5ES7XkFmrU1 .WGklHEHuq_jyGniR8G8Q:first-child + .mJ9778uUx85rQLrNK_Mg')?.textContent); const b = parseValue(document.querySelector('.g9zXUaTbC5ES7XkFmrU1 .WGklHEHuq_jyGniR8G8Q:nth-child(3) + .mJ9778uUx85rQLrNK_Mg')?.textContent); d.top10HoldersPct = parseValue(document.querySelector('.g9zXUaTbC5ES7XkFmrU1 .WGklHEHuq_jyGniR8G8Q:nth-child(2) + .mJ9778uUx85rQLrNK_Mg')?.textContent); d.freshHolderPct = parseValue(document.querySelector('.g9zXUaTbC5ES7XkFmrU1 .WGklHEHuq_jyGniR8G8Q:nth-child(4) + .mJ9778uUx85rQLrNK_Mg')?.textContent); const i = document.querySelector('.c-info__content'); if (i) { d.txns = parseValue(i.querySelector(`[data-name="txns"]`)?.textContent); d.buyVol = parseValue(i.querySelector(`[data-name="buy_vol"]`)?.textContent); d.sellVol = parseValue(i.querySelector(`[data-name="sell_vol"]`)?.textContent); } d.buySellVolRatio = (d.sellVol > 0) ? (d.buyVol / d.sellVol) : 100; d.botHoldersPct = (d.holderCount > 0) ? (b / d.holderCount) * 100 : 0; d.isSecure = d.isLpBurned && d.isMintDisabled && d.isFreezeDisabled; d.ageInMinutes = parseValue(document.querySelector('.c-info__tab.js-info__tab:first-child .c-info__interval')?.textContent || ''); return d; }
+    function analyzeCoinState(data, history) { if (history.length < CONFIG.MC_HISTORY_LENGTH) return 'ANALYZING'; const mcChangePct = ((data.marketCap - history[0]) / history[0]) * 100; if (mcChangePct > CONFIG.STATE_CHANGE_THRESHOLD_PUMP) return 'PUMPING'; if (mcChangePct < CONFIG.STATE_CHANGE_THRESHOLD_DUMP) return 'DUMPING'; if (Math.abs(mcChangePct) < 4) return 'CONSOLIDATING'; return 'NEUTRAL'; }
+    function checkMomentumRide(data, state) { if (state === 'PUMPING' && data.buySellVolRatio > 1.2) { return 'MOMENTUM_RIDE'; } return null; }
+    function checkDexPaidSpike(data, state) { if (data.isDexPaid && data.ageInMinutes <= 10 && state === 'PUMPING' && data.buyVol > data.sellVol) return 'DEX_SPIKE'; return null; }
+    function checkRocketLaunch(data, state) { if (state === 'PUMPING' && data.freshHolderPct > 8 && data.buySellVolRatio > 1.2) return 'ROCKET'; return null; }
+    function checkPreTradeRules(d) { return d.isSecure && d.liquidity > CONFIG.MIN_LIQUIDITY && d.top10HoldersPct < CONFIG.MAX_TOP_10_HOLDERS_PCT && d.botHoldersPct < CONFIG.MAX_BOT_HOLDERS_PCT; }
+    function isPeakPump(data, state) { if (state === 'PUMPING' && data.buySellVolRatio < 1.1) { console.log(`[${getTimestamp()}] [FILTER] Peak Pump Detected. State is PUMPING, but buy/sell ratio (${data.buySellVolRatio.toFixed(2)}) is weakening. Ignoring signals.`); return true; } return false; }
+
+    function monitorTrade(data, state) {
+        const mcPnlPercent = ((data.marketCap - tradeState.entryMarketCap) / tradeState.entryMarketCap) * 100;
+        const prefix = CONFIG.PAPER_TRADING_MODE ? '[PAPER TRADE] ' : '';
+        console.log(`[${getTimestamp()}] ${prefix}[MONITOR] State: ${state} | Type: ${tradeState.tradeType} | PnL: ${mcPnlPercent.toFixed(2)}% | Peak PnL: ${tradeState.peakPnl.toFixed(2)}%`);
+
+        if (mcPnlPercent > tradeState.peakPnl) {
+            tradeState.peakPnl = mcPnlPercent;
+            tradeState.stagnationCounter = 0;
+        }
+
+        if (mcPnlPercent <= CONFIG.STOP_LOSS_PCT) { exitTrade(data, `Stop Loss at ${mcPnlPercent.toFixed(2)}%`); return; }
+        if (mcPnlPercent >= CONFIG.TAKE_PROFIT_PCT) { exitTrade(data, `Take Profit at ${mcPnlPercent.toFixed(2)}%`); return; }
+
+        if (tradeState.peakPnl >= CONFIG.PROFIT_LOCK_MIN_PEAK_PNL) {
+            if (mcPnlPercent <= (tradeState.peakPnl - CONFIG.PROFIT_LOCK_DROP_PCT)) {
+                exitTrade(data, `Profit Lock triggered at ${mcPnlPercent.toFixed(2)}% (Peak was ${tradeState.peakPnl.toFixed(2)}%)`);
+                return;
+            }
+        }
+
+        if (mcPnlPercent > CONFIG.PROFIT_STAGNATION_MIN_PNL) {
+            tradeState.stagnationCounter++;
+            if (tradeState.stagnationCounter >= CONFIG.PROFIT_STAGNATION_CHECKS) {
+                exitTrade(data, `Profit Stagnation at ${mcPnlPercent.toFixed(2)}%`);
+                return;
+            }
+        }
+
+        if (tradeState.tradeType === 'MOMENTUM_RIDE' && state !== 'PUMPING' && mcPnlPercent < CONFIG.MOMENTUM_LOST_EXIT_THRESHOLD_PNL) {
+            exitTrade(data, `Momentum Lost at ${mcPnlPercent.toFixed(2)}%`);
+            return;
+        }
+    }
+
+    function enterTrade(data, type) { const prefix = CONFIG.PAPER_TRADING_MODE ? '[PAPER TRADE] ' : ''; console.log(`%c[${getTimestamp()}] ${prefix}[ACTION] ENTER ${type} TRADE`, 'color: #00ff00; font-weight: bold;'); console.log(`${prefix}Entry MC: ${formatValue(data.marketCap)} | State: ${data.state}`); if (!CONFIG.PAPER_TRADING_MODE) { /* REAL BUY LOGIC */ } tradeState.inTrade = true; tradeState.tradeType = type; tradeState.entryMarketCap = data.marketCap; tradeState.peakPnl = 0; tradeState.stagnationCounter = 0; sendToDiscord('TRADE_ENTRY', { ...data, tradeType: type }); }
+    function exitTrade(data, reason) { const pnl = ((data.marketCap - tradeState.entryMarketCap) / tradeState.entryMarketCap) * 100; const prefix = CONFIG.PAPER_TRADING_MODE ? '[PAPER TRADE] ' : ''; console.log(`%c[${getTimestamp()}] ${prefix}EXIT: ${reason}`, 'color: #ff0000; font-weight: bold;'); if (!CONFIG.PAPER_TRADING_MODE) { /* REAL SELL LOGIC */ } const coinAddress = window.location.pathname.split('/').pop(); coinMemory[coinAddress] = { lastExitMarketCap: data.marketCap, lastExitTimestamp: Date.now() }; sendToDiscord('TRADE_EXIT', { ...data, reason, pnl }); tradeState.inTrade = false; tradeState.tradeType = null; }
+    function canReEnter(coinAddress, currentMarketCap) { const memory = coinMemory[coinAddress]; if (!memory) return true; if (Date.now() - memory.lastExitTimestamp < CONFIG.RE_ENTRY_MIN_WAIT_MS) return false; const pullbackPct = ((currentMarketCap - memory.lastExitMarketCap) / memory.lastExitMarketCap) * 100; if (pullbackPct > CONFIG.RE_ENTRY_PULLBACK_PCT) return false; console.log(`[${getTimestamp()}] Re-entry conditions met. Pullback of ${pullbackPct.toFixed(1)}% detected.`); return true; }
+    async function sendToDiscord(eventType, data) { if (!CONFIG.DISCORD_WEBHOOK_URL || CONFIG.DISCORD_WEBHOOK_URL.includes("YOUR_WEBHOOK_URL")) return; const coinInfo = getCoinVisualData(); const paperTradePrefix = CONFIG.PAPER_TRADING_MODE ? "[PAPER TRADE] " : ""; const embed = { title: `${paperTradePrefix}Bot Event`, url: window.location.href, timestamp: new Date().toISOString(), footer: { text: `Solana Trading Bot v4.4` }, thumbnail: { url: coinInfo.image }, fields: [] }; switch (eventType) { case 'TRADE_ENTRY': embed.title = `${paperTradePrefix}📈 Trade Entry: ${coinInfo.name}`; embed.color = 3447003; embed.fields.push({ name: 'Signal', value: data.tradeType, inline: true }, { name: 'Entry Market Cap', value: formatValue(data.marketCap), inline: true }, { name: 'Liquidity', value: formatValue(data.liquidity), inline: true }, { name: 'State', value: data.state, inline: false }); break; case 'TRADE_EXIT': const isProfit = data.pnl >= 0; embed.title = `${paperTradePrefix}${isProfit ? '✅' : '🚨'} Trade Exit: ${coinInfo.name}`; embed.color = isProfit ? 3066993 : 15158332; embed.fields.push({ name: 'Reason', value: data.reason, inline: true }, { name: 'Final PnL', value: `${data.pnl.toFixed(2)}%`, inline: true }, { name: 'Entry MC', value: formatValue(tradeState.entryMarketCap), inline: true }, { name: 'Exit MC', value: formatValue(data.marketCap), inline: true }, { name: 'Peak PnL', value: `${tradeState.peakPnl.toFixed(2)}%`, inline: true }, { name: 'State', value: data.state, inline: false }); break; } if (embed.fields.length === 0) return; try { await fetch(CONFIG.DISCORD_WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ embeds: [embed] }) }); } catch (error) { console.error(`[${getTimestamp()}] Failed to send Discord webhook:`, error); } }
+    function main() { const data = getCoinData(); if (!data || data.marketCap === null) { console.warn(`[${getTimestamp()}] Waiting for essential page data...`); return; } tradeState.marketCapHistory.push(data.marketCap); if (tradeState.marketCapHistory.length > CONFIG.MC_HISTORY_LENGTH) { tradeState.marketCapHistory.shift(); } data.state = analyzeCoinState(data, tradeState.marketCapHistory); if (!tradeState.inTrade) { const prefix = CONFIG.PAPER_TRADING_MODE ? '[PAPER] ' : ''; console.log(`[${getTimestamp()}] ${prefix}[ANALYSIS] State: %c${data.state}`, 'font-weight: bold;'); if (isPeakPump(data, data.state)) { pendingSignal = { type: null, confirmationCount: 0 }; return; } if (canReEnter(window.location.pathname.split('/').pop(), data.marketCap) && checkPreTradeRules(data)) { let currentSignal = checkMomentumRide(data, data.state) || checkRocketLaunch(data, data.state) || checkDexPaidSpike(data, data.state); if (currentSignal) { if (pendingSignal.type === currentSignal) { pendingSignal.confirmationCount++; console.log(`[SIGNAL CONFIRMATION] Signal ${currentSignal} confirmed (${pendingSignal.confirmationCount}/${CONFIG.SIGNAL_CONFIRMATION_COUNT}).`); if (pendingSignal.confirmationCount >= CONFIG.SIGNAL_CONFIRMATION_COUNT) { enterTrade(data, currentSignal); pendingSignal = { type: null, confirmationCount: 0 }; } } else { pendingSignal = { type: currentSignal, confirmationCount: 1 }; console.log(`[SIGNAL SPOTTED] New signal ${currentSignal} found. Awaiting confirmation...`); } } else { if (pendingSignal.type) { console.log(`[SIGNAL LOST] Signal ${pendingSignal.type} was lost.`); } pendingSignal = { type: null, confirmationCount: 0 }; } } } else { monitorTrade(data, data.state); } }
+    setInterval(main, CONFIG.CHECK_INTERVAL_MS);
+})();
+```
