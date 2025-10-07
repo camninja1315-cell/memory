@@ -1,0 +1,118 @@
+# Solana Trading Bot - Logic Memory Repo
+- **Version:** 4.0
+- **Codename:** The Classic Engine, Refined
+- **Date:** 2025-10-07
+
+## 1. Core Philosophy
+This version returns to the stable, proven architecture of a single, consistent 3-second interval (`CHECK_INTERVAL_MS`). It abandons the more complex dual-horizon and adaptive-interval engines in favor of simplicity and reliability. The core innovation is a new **"Peak Pump" filter**, designed specifically to prevent entries at the top of an exhausted pump, which was the primary weakness of the otherwise successful v2.4 logic.
+
+---
+
+## 2. Core Architecture
+- **Engine:** Classic Single Interval
+- **Check Interval:** `3000ms` (3 seconds). This provides a clear, easy-to-read market state without the noise of faster intervals.
+- **State Analysis:** A single `state` is derived from the market cap change over a 36-second window (`MC_HISTORY_LENGTH` of 12 data points * 3 seconds).
+- **Confirmation:** A signal must be present for 2 consecutive checks (`SIGNAL_CONFIRMATION_COUNT: 2`) before a trade is entered. This ensures the signal is stable.
+
+---
+
+## 3. Configuration Parameters (`CONFIG` object)
+```javascript
+const CONFIG = {
+    // --- Core Settings ---
+    CHECK_INTERVAL_MS: 3000,      // The master interval for all checks (3 seconds).
+    MC_HISTORY_LENGTH: 12,        // How many data points to use for trend analysis (12 * 3s = 36s window).
+    SIGNAL_CONFIRMATION_COUNT: 2, // A signal must be valid for 2 consecutive checks (6 seconds total).
+
+    // --- Entry Rules ---
+    MIN_LIQUIDITY: 20000,           // Minimum liquidity in USD to consider a trade.
+    MAX_TOP_10_HOLDERS_PCT: 30,     // Max % held by the top 10 wallets.
+    MAX_BOT_HOLDERS_PCT: 50,        // Max % of holders that are flagged as bots.
+
+    // --- Exit Rules ---
+    TAKE_PROFIT_PCT: 25,            // PnL % to automatically exit for profit.
+    STOP_LOSS_PCT: -10,             // PnL % to automatically exit for loss.
+
+    // --- Trade Management ---
+    PROFIT_STAGNATION_CHECKS: 5,    // Number of checks (5 * 3s = 15s) to wait before exiting a stalled trade.
+    PROFIT_STAGNATION_MIN_PNL: 5,   // Minimum PnL required for stagnation check to be active.
+
+    // --- Cooldown ---
+    RE_ENTRY_PULLBACK_PCT: -10,     // After an exit, MC must dip by this % before re-entry is allowed.
+    RE_ENTRY_MIN_WAIT_MS: 90000,    // Minimum time to wait before considering re-entry on the same coin.
+
+    // --- State Thresholds ---
+    STATE_CHANGE_THRESHOLD_PUMP: 8, // % increase over the 36s window to be considered 'PUMPING'.
+    STATE_CHANGE_THRESHOLD_DUMP: -8, // % decrease over the 36s window to be considered 'DUMPING'.
+};
+```
+
+---
+
+## 4. Trading Strategies & Signals
+The bot checks for these signals in the following order of priority.
+
+### a. `checkDexPaidSpike(data, state)`
+- **Goal:** Catch initial hype on new coins that pay for DEX Screener promotion.
+- **Conditions:**
+    1. `data.isDexPaid` is `true`.
+    2. `data.ageInMinutes` is `<= 10`.
+    3. `state` is `PUMPING`.
+    4. `data.buyVol` is greater than `data.sellVol`.
+
+### b. `checkBreakoutScalp(data, state)`
+- **Goal:** Enter a trade when a coin starts pumping after a period of sideways movement.
+- **Conditions:**
+    1. `state` is `CONSOLIDATING`.
+    2. `data.buySellVolRatio` is `> 1.2`.
+
+### c. `checkReversalScalp(data, history)`
+- **Goal:** Catch a "V-shaped" recovery after a significant dip.
+- **Conditions:**
+    1. There has been a dip of at least `-15%` in the recent history.
+    2. The current `data.marketCap` has recovered at least `5%` from the bottom of that dip.
+
+### d. `checkRocketLaunch(data, state)`
+- **Goal:** Identify pumps driven by a rapid influx of new buyers.
+- **Conditions:**
+    1. `state` is `PUMPING`.
+    2. `data.freshHolderPct` is `> 8%`.
+    3. `data.buySellVolRatio` is `> 1.2`.
+
+---
+
+## 5. Filters & Safety Checks
+
+### a. `isPeakPump(data, state)` - CRITICAL FILTER
+This is the most important filter in v4.0. It runs **before** any signal checks.
+- **Goal:** Prevent the bot from entering a trade at the very top of a pump when buying pressure is fading.
+- **Conditions:**
+    1. The market `state` is `PUMPING`.
+    2. AND the `data.buySellVolRatio` has dropped below `1.1`.
+- **Action:** If true, the bot ignores all signals for that tick and resets any pending confirmations.
+
+### b. `checkPreTradeRules(data)`
+This is a general safety check performed before any signal is considered.
+- **Conditions:**
+    1. The coin is secure (`isLpBurned`, `isMintDisabled`, `isFreezeDisabled`).
+    2. Liquidity, Top 10 Holders, and Bot Holders are within the limits set in `CONFIG`.
+
+### c. `canReEnter(coinAddress, currentMarketCap)`
+This prevents the bot from immediately jumping back into a coin it just exited.
+- **Conditions:**
+    1. Has it been at least `RE_ENTRY_MIN_WAIT_MS` since the last exit?
+    2. Has the market cap pulled back by at least `RE_ENTRY_PULLBACK_PCT` since the last exit?
+
+---
+
+## 6. Reporting & Webhooks
+- **Platform:** Discord
+- **Events:** `TRADE_ENTRY` and `TRADE_EXIT`.
+- **Data Included:**
+    - Coin Name & Image
+    - Link to Photon Page
+    - Signal/Reason for Entry/Exit
+    - Entry & Exit Market Cap
+    - Final PnL%
+    - Market State at time of event
+```
