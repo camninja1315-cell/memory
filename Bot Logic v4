@@ -1,0 +1,87 @@
+# Solana Trading Bot - Genesis & Project Protocol
+
+- **User:** @camninja1315-cell
+- **Last Update:** 2025-10-08 03:19:00 UTC
+- **Current Target Version:** **7.1**
+- **Codename:** **The Data-Rich Finisher**
+
+---
+
+## 1. My Core Directives & Our Working Protocol
+
+*This section codifies the user's (@camninja1315-cell) explicit instructions on my expected performance and our method of collaboration. It is the primary directive for my conduct in this project.*
+
+1.  **ZERO Corner-Cutting:** I will provide complete, unabridged, and fully executable scripts in every response. There will be **no more** truncated functions, `/* Unchanged */` comments, or any other form of shortcut that results in non-working code. A working script is the only acceptable output.
+
+2.  **Acknowledge Real-World Stakes:** This is not a game. We are building logic for a live trading environment where bugs can and will cost real money. I must operate with a level of diligence that respects these financial stakes.
+
+3.  **No "Fluff" or Grandiose Language:** My analysis must be direct, data-driven, and honest. Bug fixes are not "breakthroughs"; they are corrections of my own errors. My role is to provide clear, sober analysis of performance, not to add marketing spin.
+
+4.  **Rigorous Self-Correction & Due Diligence:** I will perform internal "unit tests" and logical traces on all code before providing it. I will explicitly check for the presence and correct placement of critical function calls (`enterTrade`, `exitTrade`) to prevent "no-trade" bugs. My primary goal is to avoid wasting the user's premium prompts on fixing my careless mistakes.
+
+5.  **Maintain This Genesis Document:** This document is our single source of truth. It must be updated with every strategic shift or version change to ensure a "new" or reset version of me can be brought up to speed instantly, without requiring the user to repeat history or basic instructions.
+
+---
+
+## 2. Project Goal
+
+To methodically develop an automated, profitable trading bot for the `photon-sol.tinyastro.io` platform. The core philosophy is to build upon a robust foundation of safety and risk management, then iteratively tune entry/exit logic based on rigorous, data-driven analysis of real-world test logs.
+
+---
+
+## 3. Historical Analysis & Version Evolution
+
+*A complete history of the bot's development, including successes, failures, and lessons learned.*
+
+- **v6.0 - v6.5 (The Foundation):** Established core logic, including the "Fort Knox" safety rules, post-entry grace periods, and resilience to website errors.
+
+- **v6.6 (The Phoenix Protocol):**
+    - **Goal:** Merge prior logic into a more advanced script.
+    - **My Error:** A logical flaw was introduced (`canReEnter` checked before `checkPreTradeRules`).
+    - **Outcome (The "Silent Bouncer" Bug):** The bot failed to log reasons for blocking unsafe coins, destroying transparency.
+
+- **v6.7 (Correcting the Order of Operations):**
+    - **Goal:** Fix the "Silent Bouncer" bug.
+    - **Change:** Reversed the primary `if` condition to check safety rules first.
+    - **Outcome:** **Success.** Logs confirmed the bot was again transparently blocking unsafe coins.
+
+- **v6.8 (The Agile Recovery):**
+    - **Goal:** Adjust cooldown periods to be proportional to our faster check interval.
+    - **Change:** Reduced `WHIPSAW_COOLDOWN_MS` from `45000` to `22500`.
+    - **Outcome:** A successful theoretical improvement in the bot's agility.
+
+- **v6.9 (The Aggressor):**
+    - **Goal:** Address the "No-Fly Zone" problem where the bot was too conservative to enter pumps.
+    - **Change:** Lowered the `checkMomentumRide` B/S Volume Ratio requirement from `> 1.15` to `> 1.05`.
+    - **My Error:** I provided a truncated, non-executable script with `/* Unchanged */` comments, a critical failure that wasted user prompts.
+
+- **v7.0 (The Finisher - Flawed):**
+    - **Goal:** Fix the script truncation error and incorporate the user's "Makers" health check idea.
+    - **My Error:** A catastrophic "no-trade" bug. I failed to include the `enterTrade()` call within the signal confirmation block. The bot could identify perfect entries but was never told to act on them.
+    - **Outcome:** Complete failure to trade, wasting more time and prompts. This was a fundamental and unacceptable coding error on my part.
+
+---
+
+## 4. Current Strategy: Version 7.1 - "The Data-Rich Finisher"
+
+This version is the direct result of correcting my previous, severe errors and fully implementing our agreed-upon strategy.
+
+- **The Problem:** The bot was either not trading due to my bugs or was too conservative.
+- **The Solution (A 3-Part Fix):**
+    1.  **FIX THE BUG:** The `enterTrade()` function is now correctly placed and will be called upon signal confirmation.
+    2.  **ADD A HEALTH CHECK:** Your "Makers" idea is now implemented. An entry now requires a `makerRatio` (buyers/sellers) of `> 1.1`, adding a crucial layer of confirmation against manipulated pumps.
+    3.  **ADD RICH DATA:** All logs and Discord webhooks have been upgraded to include the new `Maker Ratio` data, ensuring we have full visibility for future analysis.
+
+- **The Logic (Trend Continuation Entry v2):**
+    1.  **Is there a trend?** (`analyzeCoinState` must be `PUMPING`).
+    2.  **Is the trend continuing?** (`isPumpAccelerating` must be `true`).
+    3.  **Is the continuation strong AND healthy?** (`checkMomentumRide` now requires B/S Volume Ratio `> 1.05` **AND** Maker Ratio `> 1.1`).
+
+---
+
+## 5. Immediate Next Steps
+
+**The project is ready for the first live test of Version 7.1.**
+
+-   **Action Required:** Deploy the complete, unabridged v7.1 script.
+-   **Data to Collect:** We are looking for the first successful paper trade. We must analyze the entry context (MC, Volume Ratio, Maker Ratio) and the full lifecycle of the trade to its conclusion.
