@@ -1,0 +1,156 @@
+// ==UserScript==
+// @name         Solana Meme Coin Trading Bot Logic
+// @namespace    http://tampermonkey.net/
+// @version      6.1
+// @description  The Experienced Trader. Implements a faster 1.5s check interval with a 2-check confirmation (3s total) and a smarter Peak Pump filter to enter healthy pumps early and decisively.
+// @author       camninja1315-cell & Copilot
+// @match        https://photon-sol.tinyastro.io/en/lp/*
+// @grant        window.close
+// @grant        GM_xmlhttpRequest
+// @run-at       document-idle
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    function getTimestamp() { return new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC'; }
+    function getShortTimestamp() { return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }); }
+    console.log(`[${getTimestamp()}] --- Solana Meme Coin Bot Initialized (v6.1 - The Experienced Trader) ---`);
+
+    const CONFIG = {
+        // --- Core Settings ---
+        PAPER_TRADING_MODE: true,
+        DISCORD_WEBHOOK_URL: "https://canary.discord.com/api/webhooks/1420920608992137267/T82i9UpYJRC8RxhDd399r72khFtV4aaKZIvaI4oBL-BVHcVeAR1MuMJPicZcpoUz6GL1",
+        SESSION_SUMMARY_WEBHOOK_URL: "https://canary.discord.com/api/webhooks/1425130859031429172/f0xb1QeLbEXurTIVQGmT15PjAuS4C7wzDak9c4yZSbFSABKR70R6eR_HUqo75uk9-g4I",
+        CHECK_INTERVAL_MS: 1500,                 // Reduced from 3000
+        REFLEX_MONITOR_INTERVAL_MS: 500,
+
+        // --- v5.8: Fort Knox Pre-Trade Rules ---
+        MIN_LIQUIDITY: 25000,
+        MIN_LIQUIDITY_TO_MC_RATIO: 0.35,
+        MAX_TOP_10_HOLDERS_PCT: 30,
+        MAX_BOT_HOLDERS_PCT: 50,
+
+        // --- Standard Exit Rules ---
+        TAKE_PROFIT_PCT: 40,
+        STOP_LOSS_PCT: -10,
+
+        // --- Tiered Profit Lock ---
+        PROFIT_LOCK_TIER1_MIN_PEAK_PNL: 5,   PROFIT_LOCK_TIER1_DROP_PCT: 3,
+        PROFIT_LOCK_TIER2_MIN_PEAK_PNL: 15,  PROFIT_LOCK_TIER2_DROP_PCT: 7,
+
+        // --- v6.1: State & Signal Analysis (Smart & Fast Tuning) ---
+        MC_HISTORY_LENGTH: 10,
+        STATE_CHANGE_THRESHOLD_PUMP: 8,
+        STATE_CHANGE_THRESHOLD_DUMP: -8,
+        SIGNAL_CONFIRMATION_COUNT: 2,          // Restored to 2 (total 3s confirmation window)
+        BUY_VOL_HISTORY_LENGTH: 3,
+
+        // --- Strategy-Specific Exits & Re-Entry ---
+        PROFIT_STAGNATION_CHECKS: 5,
+        PROFIT_STAGNATION_MIN_PNL: 5,
+        MOMENTUM_LOST_EXIT_THRESHOLD_PNL: 3,
+        MOMENTUM_LOST_GRACE_PERIOD_CHECKS: 2, // 2 checks * 1.5s = 3s grace period
+        RE_ENTRY_PULLBACK_PCT: -10,
+        RE_ENTRY_MIN_WAIT_MS: 90000,
+        WHIPSAW_COOLDOWN_MS: 45000,
+
+        // --- Smart Reaper & Punisher ---
+        DEAD_COIN_TIMEOUT_MS: 1200000,
+        MAX_CONSECUTIVE_LOSSES: 3,
+    };
+
+    if (CONFIG.PAPER_TRADING_MODE) { console.log('%c[PAPER TRADING MODE ACTIVATED] No real trades will be executed.', 'color: #FFA500; font-weight: bold; font-size: 14px;'); }
+
+    let tradeState = { inTrade: false, tradeType: null, entryMarketCap: 0, peakPnl: 0, stagnationCounter: 0, marketCapHistory: [], buyVolHistory: [], checksSinceEntry: 0 };
+    let coinMemory = { tradeHistory: [], lastExitTimestamp: null, lastExitMarketCap: null, lastProfitableExitTimestamp: null, firstTradeTimestamp: null, consecutiveLosses: 0, isBlacklisted: false, isReaping: false };
+    let pendingSignal = { type: null, confirmationCount: 0 };
+    let cooldownState = { onCooldown: false, cooldownUntil: 0 };
+    let reflexMonitorIntervalId = null;
+
+    // --- v6.1: Smarter Peak Pump Filter ---
+    function isPeakPump(data, state) {
+        // A pump is only considered "peaking" or "weakening" if sell volume actually starts to match or exceed buy volume.
+        // A ratio of 1.04 is still healthy consolidation. This filter prevents the bot from missing good entries.
+        if (state === 'PUMPING' && data.buySellVolRatio < 1.0) {
+            console.log(`[${getTimestamp()}] [FILTER] Peak Pump Detected. State is PUMPING, but buy/sell ratio (${data.buySellVolRatio.toFixed(2)}) is weakening. Ignoring signals.`);
+            return true;
+        }
+        return false;
+    }
+
+    function checkPreTradeRules(d) {
+        if (d.liquidity < CONFIG.MIN_LIQUIDITY) { console.log(`[${getTimestamp()}] [FILTER] Blocked. Liquidity ${formatValue(d.liquidity)} is below minimum of ${formatValue(CONFIG.MIN_LIQUIDITY)}.`); return false; }
+        const liquidityToMcRatio = (d.marketCap > 0) ? (d.liquidity / d.marketCap) : 0;
+        if (liquidityToMcRatio < CONFIG.MIN_LIQUIDITY_TO_MC_RATIO) { console.log(`[${getTimestamp()}] [FILTER] Blocked. Liquidity to MC ratio is ${(liquidityToMcRatio * 100).toFixed(1)}%, below minimum of ${(CONFIG.MIN_LIQUIDITY_TO_MC_RATIO * 100)}%.`); return false; }
+        if (!d.isSecure) { console.log(`[${getTimestamp()}] [FILTER] Blocked. Coin is not secure (LP not burned, mint/freeze enabled).`); return false; }
+        if (d.top10HoldersPct > CONFIG.MAX_TOP_10_HOLDERS_PCT) { console.log(`[${getTimestamp()}] [FILTER] Blocked. Top 10 holders have ${d.top10HoldersPct}%, above max of ${CONFIG.MAX_TOP_10_HOLDERS_PCT}%.`); return false; }
+        if (d.botHoldersPct > CONFIG.MAX_BOT_HOLDERS_PCT) { console.log(`[${getTimestamp()}] [FILTER] Blocked. Bot holders are ${d.botHoldersPct.toFixed(1)}%, above max of ${CONFIG.MAX_BOT_HOLDERS_PCT}%.`); return false; }
+        return true;
+    }
+
+    function sendToDiscord(eventType, data) {
+        let webhookUrl = CONFIG.DISCORD_WEBHOOK_URL;
+        if (eventType === 'SESSION_SUMMARY') { webhookUrl = CONFIG.SESSION_SUMMARY_WEBHOOK_URL; }
+        if (!webhookUrl || webhookUrl.includes("YOUR_WEBHOOK_URL")) return;
+        const coinInfo = getCoinVisualData();
+        const paperTradePrefix = CONFIG.PAPER_TRADING_MODE ? "[PAPER] " : "";
+        const eventTimestamp = getTimestamp();
+        let embed = { url: window.location.href, timestamp: new Date().toISOString(), footer: { text: `Solana Trading Bot v6.1` }, thumbnail: { url: coinInfo.image } };
+
+        switch (eventType) {
+            case 'TRADE_ENTRY':
+                embed.title = `${paperTradePrefix}📈 Entry: ${coinInfo.name}`;
+                embed.color = 3447003;
+                embed.fields = [ { name: 'Signal', value: data.tradeType, inline: true }, { name: 'State', value: data.state, inline: true }, { name: 'Time', value: eventTimestamp.split(' ')[1], inline: true }, { name: 'Entry MC', value: formatValue(data.marketCap), inline: false }, { name: '---', value: '*(Metrics at moment of entry)*', inline: false }, { name: 'Liquidity', value: formatValue(data.liquidity), inline: true }, { name: 'Liq/MC Ratio', value: `${(data.liquidity / data.marketCap * 100).toFixed(1)}%`, inline: true }, { name: 'Buy/Sell Ratio', value: data.buySellVolRatio.toFixed(2), inline: true }, ];
+                break;
+            case 'TRADE_EXIT':
+                const isProfit = data.pnl >= 0;
+                embed.title = `${paperTradePrefix}${isProfit ? '✅' : '🚨'} Exit: ${coinInfo.name}`;
+                embed.color = isProfit ? 3066993 : 15158332;
+                embed.fields = [ { name: 'PnL', value: `**${data.pnl.toFixed(2)}%**`, inline: true }, { name: 'Peak PnL', value: `${data.peakPnl.toFixed(2)}%`, inline: true }, { name: 'Time', value: eventTimestamp.split(' ')[1], inline: true }, { name: 'Exit Reason', value: data.reason, inline: false }, { name: 'Entry MC', value: formatValue(data.entryMarketCap), inline: true }, { name: 'Exit MC', value: formatValue(data.marketCap), inline: true }, ];
+                break;
+            case 'BLACKLIST':
+                embed.title = `${paperTradePrefix}🚫 Blacklisted: ${coinInfo.name}`;
+                embed.color = 0;
+                embed.description = `Coin blacklisted after **${data.consecutiveLosses}** consecutive losses. No more trades will be attempted this session.`;
+                break;
+            case 'SESSION_SUMMARY':
+                embed.title = `${paperTradePrefix}📋 Session Summary: ${coinInfo.name}`;
+                embed.color = 16776960;
+                const totalTrades = data.tradeHistory.length;
+                const wins = data.tradeHistory.filter(t => t.pnl > 0);
+                const losses = data.tradeHistory.filter(t => t.pnl <= 0);
+                const totalPnl = data.tradeHistory.reduce((sum, t) => sum + t.pnl, 0);
+                const avgPnl = totalTrades > 0 ? totalPnl / totalTrades : 0;
+                const winRate = totalTrades > 0 ? (wins.length / totalTrades) * 100 : 0;
+                const totalWinPnl = wins.reduce((sum, t) => sum + t.pnl, 0);
+                const avgWinPnl = wins.length > 0 ? totalWinPnl / wins.length : 0;
+                const totalLossPnl = losses.reduce((sum, t) => sum + t.pnl, 0);
+                const avgLossPnl = losses.length > 0 ? totalLossPnl / losses.length : 0;
+                const profitFactor = totalLossPnl !== 0 ? Math.abs(totalWinPnl / totalLossPnl) : (totalWinPnl > 0 ? 999 : 0);
+                embed.description = `Reaper closing tab. Summary of **${totalTrades}** trades.`;
+                embed.fields = [ { name: 'Overall Pnl', value: `**${totalPnl.toFixed(2)}%**`, inline: true }, { name: 'Win Rate', value: `${wins.length}/${totalTrades} (${winRate.toFixed(1)}%)`, inline: true }, { name: 'Profit Factor', value: `${profitFactor.toFixed(2)}`, inline: true }, { name: 'Avg Pnl', value: `${avgPnl.toFixed(2)}%`, inline: true }, { name: 'Avg Win', value: `${avgWinPnl.toFixed(2)}%`, inline: true }, { name: 'Avg Loss', value: `${avgLossPnl.toFixed(2)}%`, inline: true }, { name: '---', value: 'Trade Breakdown:', inline: false } ];
+                data.tradeHistory.forEach((trade, index) => { const tradeIcon = trade.pnl >= 0 ? '✅' : '🚨'; const tradeField = { name: `${tradeIcon} Trade #${index + 1} at ${trade.shortTimestamp}`, value: `**PnL:** ${trade.pnl.toFixed(2)}% (Peak: ${trade.peakPnl.toFixed(2)}%)\n` + `**MC:** ${formatValue(trade.entryMc)} → ${formatValue(trade.exitMc)}\n` + `**Reason:** ${trade.reason}` }; embed.fields.push(tradeField); });
+                break;
+            default: return;
+        }
+        const sanitizedEmbed = sanitizeObjectForDiscord(embed);
+        GM_xmlhttpRequest({ method: "POST", url: webhookUrl, headers: { "Content-Type": "application/json" }, data: JSON.stringify({ embeds: [sanitizedEmbed] }), onload: function(response) { if (response.status >= 400) { console.error(`[${getTimestamp()}] Discord webhook failed with status ${response.status}:`, response.responseText); } }, onerror: function(error) { console.error(`[${getTimestamp()}] Failed to send Discord notification:`, error); } });
+    }
+
+    function main() { const now = Date.now(); const data = getCoinData(); if (!data || data.marketCap === null) { console.warn(`[${getTimestamp()}] Waiting for essential page data...`); return; } tradeState.marketCapHistory.push(data.marketCap); if (tradeState.marketCapHistory.length > CONFIG.MC_HISTORY_LENGTH) { tradeState.marketCapHistory.shift(); } tradeState.buyVolHistory.push(data.buyVol); if (tradeState.buyVolHistory.length > CONFIG.BUY_VOL_HISTORY_LENGTH) { tradeState.buyVolHistory.shift(); } data.state = analyzeCoinState(data, tradeState.marketCapHistory); if (cooldownState.onCooldown) { if (now < cooldownState.cooldownUntil) { return; } else { console.log(`[${getTimestamp()}] [COOLDOWN] Cooldown period ended.`); cooldownState.onCooldown = false; } } if (!tradeState.inTrade) { console.log(`[${getTimestamp()}] [ANALYSIS] State: %c${data.state}`, 'font-weight: bold;'); checkAndReapTab(data); if (isPeakPump(data, data.state)) { pendingSignal = { type: null, confirmationCount: 0 }; return; } if (canReEnter(data.marketCap) && checkPreTradeRules(data)) { const { isAccelerating, historicalAvg } = isPumpAccelerating(data.buyVol, tradeState.buyVolHistory); if (isAccelerating) { let currentSignal = checkMomentumRide(data, data.state); if (currentSignal) { if (pendingSignal.type === currentSignal) { pendingSignal.confirmationCount++; console.log(`[SIGNAL CONFIRMATION] Signal ${currentSignal} confirmed (${pendingSignal.confirmationCount}/${CONFIG.SIGNAL_CONFIRMATION_COUNT}).`); } else { pendingSignal = { type: currentSignal, confirmationCount: 1 }; console.log(`[SIGNAL SPOTTED] New signal ${currentSignal} found. Awaiting confirmation...`); } if (pendingSignal.confirmationCount >= CONFIG.SIGNAL_CONFIRMATION_COUNT) { enterTrade(data, currentSignal, historicalAvg); pendingSignal = { type: null, confirmationCount: 0 }; } } else { if (pendingSignal.type) { console.log(`[${getTimestamp()}] [SIGNAL LOST] Signal ${pendingSignal.type} was lost before confirmation.`); cooldownState.onCooldown = true; cooldownState.cooldownUntil = now + CONFIG.WHIPSAW_COOLDOWN_MS; console.log(`[${getTimestamp()}] [COOLDOWN] Activating whipsaw cooldown for ${CONFIG.WHIPSAW_COOLDOWN_MS / 1000} seconds.`); } pendingSignal = { type: null, confirmationCount: 0 }; } } } } else { monitorTrade(data, data.state); } }
+    const unchangedFunctions = { sanitizeObjectForDiscord: function(obj) { if (obj === null || obj === undefined) { return "N/A"; } if (typeof obj === 'object') { const newObj = Array.isArray(obj) ? [] : {}; for (const key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) { newObj[key] = this.sanitizeObjectForDiscord(obj[key]); } } return newObj; } return obj; }, reflexMonitor: function() { if (!tradeState.inTrade) return; const data = getCoinData(); if (!data || data.marketCap === null) return; const mcPnlPercent = ((data.marketCap - tradeState.entryMarketCap) / tradeState.entryMarketCap) * 100; if (mcPnlPercent <= CONFIG.STOP_LOSS_PCT) { exitTrade(data, `[Reflex] Stop Loss at ${mcPnlPercent.toFixed(2)}%`); return; } if (mcPnlPercent >= CONFIG.TAKE_PROFIT_PCT) { exitTrade(data, `[Reflex] Take Profit at ${mcPnlPercent.toFixed(2)}%`); return; } if (tradeState.peakPnl >= CONFIG.PROFIT_LOCK_TIER2_MIN_PEAK_PNL) { if (mcPnlPercent <= (tradeState.peakPnl - CONFIG.PROFIT_LOCK_TIER2_DROP_PCT)) { exitTrade(data, `[Reflex] Tier 2 Profit Lock at ${mcPnlPercent.toFixed(2)}% (Peak was ${tradeState.peakPnl.toFixed(2)}%)`); return; } } else if (tradeState.peakPnl >= CONFIG.PROFIT_LOCK_TIER1_MIN_PEAK_PNL) { if (mcPnlPercent <= (tradeState.peakPnl - CONFIG.PROFIT_LOCK_TIER1_DROP_PCT)) { exitTrade(data, `[Reflex] Tier 1 Profit Lock at ${mcPnlPercent.toFixed(2)}% (Peak was ${tradeState.peakPnl.toFixed(2)}%)`); return; } } }, monitorTrade: function(data, state) { const mcPnlPercent = ((data.marketCap - tradeState.entryMarketCap) / tradeState.entryMarketCap) * 100; tradeState.checksSinceEntry++; console.log(`[${getTimestamp()}] [PAPER TRADE][MONITOR] State: ${state} | PnL: ${mcPnlPercent.toFixed(2)}% | Peak PnL: ${tradeState.peakPnl.toFixed(2)}% | Checks: ${tradeState.checksSinceEntry}`); if (mcPnlPercent > tradeState.peakPnl) { tradeState.peakPnl = mcPnlPercent; tradeState.stagnationCounter = 0; } if (mcPnlPercent > CONFIG.PROFIT_STAGNATION_MIN_PNL) { tradeState.stagnationCounter++; if (tradeState.stagnationCounter >= CONFIG.PROFIT_STAGNATION_CHECKS) { exitTrade(data, `Profit Stagnation at ${mcPnlPercent.toFixed(2)}%`); return; } } if (tradeState.checksSinceEntry > CONFIG.MOMENTUM_LOST_GRACE_PERIOD_CHECKS) { if (tradeState.tradeType === 'MOMENTUM_RIDE' && state !== 'PUMPING' && mcPnlPercent < CONFIG.MOMENTUM_LOST_EXIT_THRESHOLD_PNL) { exitTrade(data, `Momentum Lost at ${mcPnlPercent.toFixed(2)}%`); return; } } else { if (tradeState.tradeType === 'MOMENTUM_RIDE' && state !== 'PUMPING') { console.log(`%c[${getTimestamp()}] [GRACE PERIOD] Momentum Lost detected but ignored. (Checks: ${tradeState.checksSinceEntry}/${CONFIG.MOMENTUM_LOST_GRACE_PERIOD_CHECKS})`, 'color: #DAA520;'); } } }, enterTrade: function(data, type, avgHistoricalBuyVol) { const now = Date.now(); console.log(`%c[${getTimestamp()}] [PAPER TRADE][ACTION] ENTER ${type} TRADE`, 'color: #00ff00; font-weight: bold;'); console.log(`[PAPER TRADE]Entry MC: ${formatValue(data.marketCap)} | State: ${data.state}`); if (!coinMemory.firstTradeTimestamp) { coinMemory.firstTradeTimestamp = now; } tradeState.inTrade = true; tradeState.tradeType = type; tradeState.entryMarketCap = data.marketCap; tradeState.peakPnl = 0; tradeState.stagnationCounter = 0; tradeState.checksSinceEntry = 0; if (!reflexMonitorIntervalId) { reflexMonitorIntervalId = setInterval(reflexMonitor, CONFIG.REFLEX_MONITOR_INTERVAL_MS); console.log(`%c[${getTimestamp()}] [REFLEX MONITOR] Activated. Checking PnL every ${CONFIG.REFLEX_MONITOR_INTERVAL_MS}ms.`, 'color: #00BFFF;'); } sendToDiscord('TRADE_ENTRY', { ...data, tradeType: type, avgHistoricalBuyVol: avgHistoricalBuyVol }); }, exitTrade: function(data, reason) { if (!tradeState.inTrade) return; if (reflexMonitorIntervalId) { clearInterval(reflexMonitorIntervalId); reflexMonitorIntervalId = null; console.log(`%c[${getTimestamp()}] [REFLEX MONITOR] Deactivated.`, 'color: #808080;'); } const now = Date.now(); const pnl = ((data.marketCap - tradeState.entryMarketCap) / tradeState.entryMarketCap) * 100; console.log(`%c[${getTimestamp()}] [PAPER TRADE]EXIT: ${reason}`, 'color: #ff0000; font-weight: bold;'); const tradeRecord = { entryMc: tradeState.entryMarketCap, exitMc: data.marketCap, pnl: pnl, peakPnl: tradeState.peakPnl, reason: reason, type: tradeState.tradeType, timestamp: now, shortTimestamp: getShortTimestamp() }; coinMemory.tradeHistory.push(tradeRecord); coinMemory.lastExitMarketCap = data.marketCap; coinMemory.lastExitTimestamp = now; if (pnl > 0) { coinMemory.lastProfitableExitTimestamp = now; if(coinMemory.consecutiveLosses > 0) { console.log(`[${getTimestamp()}] [PUNISHER] Consecutive loss streak broken by profitable trade.`); coinMemory.consecutiveLosses = 0; } } else { coinMemory.consecutiveLosses++; console.log(`[${getTimestamp()}] [PUNISHER] Consecutive loss #${coinMemory.consecutiveLosses} recorded.`); if (coinMemory.consecutiveLosses >= CONFIG.MAX_CONSECUTIVE_LOSSES) { coinMemory.isBlacklisted = true; console.log(`%c[${getTimestamp()}] [PUNISHER] Coin blacklisted after ${coinMemory.consecutiveLosses} consecutive losses. No more trades will be attempted.`, 'color: #FF0000; font-weight: bold; font-size: 14px;'); sendToDiscord('BLACKLIST', { consecutiveLosses: coinMemory.consecutiveLosses }); } } sendToDiscord('TRADE_EXIT', { ...data, reason, pnl, peakPnl: tradeState.peakPnl, entryMarketCap: tradeState.entryMarketCap }); tradeState.inTrade = false; tradeState.tradeType = null; }, parseValue: function(text) { if (typeof text !== 'string') return null; let v = parseFloat(text.replace(/[\$,%]/g, '')); if (text.toUpperCase().includes('K')) v *= 1000; else if (text.toUpperCase().includes('M')) v *= 1000000; return isNaN(v) ? null : v; }, formatValue: function(num) { if (num === null || num === undefined) return '$?'; if (num >= 1000000) return `$${(num / 1000000).toFixed(2)}M`; if (num >= 1000) return `$${(num / 1000).toFixed(1)}K`; return `$${num.toFixed(0)}`; }, getCoinVisualData: function() { const nameElement = document.querySelector('.p-show__pair__cur'); const imageElement = document.querySelector('.p-show__bar__thumb img'); return { name: nameElement ? nameElement.textContent.trim() : 'Unknown Coin', image: imageElement ? imageElement.src : '' }; }, isPumpAccelerating: function(currentBuyVol, history) { if (history.length < CONFIG.BUY_VOL_HISTORY_LENGTH) { return { isAccelerating: false, historicalAvg: 0 }; } const historicalData = history.slice(0, -1); const historicalAvg = historicalData.reduce((a, b) => a + b, 0) / historicalData.length; const isAccelerating = currentBuyVol >= historicalAvg; return { isAccelerating, historicalAvg }; }, getCoinData: function() { try { const d = {}; const getSecurityText = (kind) => (document.querySelector(`.js-security-item[data-kind="${kind}"]`)?.textContent || '').toLowerCase(); const findValueByLabel = (label) => { const allLabels = document.querySelectorAll('.mJ9778uUx85rQLrNK_Mg'); for (const elem of allLabels) { if (elem.textContent.trim().toLowerCase() === label.toLowerCase()) { return elem.previousElementSibling?.textContent; } } return null; }; d.isLpBurned = (parseValue(getSecurityText('lp_burned_perc')) || 0) >= 99; d.isMintDisabled = getSecurityText('mint_authority') === 'disabled'; d.isFreezeDisabled = getSecurityText('freeze_authority') === 'disabled'; d.isDexPaid = getSecurityText('dex_s') === 'yes'; d.liquidity = parseValue(document.querySelector('.p-show__widget__td__value[data-cable-val="usdLiquidity"]')?.textContent); d.marketCap = parseValue(document.querySelector('.p-show__widget__td__value[data-cable-val="mktCapVal"]')?.textContent); d.holderCount = parseValue(findValueByLabel('Holders')); const botHolders = parseValue(findValueByLabel('Bot Holders')); d.top10HoldersPct = parseValue(findValueByLabel('Top 10 Hold (%)')); d.freshHolderPct = parseValue(findValueByLabel('Fresh Hold (%)')); const i = document.querySelector('.c-info__content'); if (i) { d.txns = parseValue(i.querySelector(`[data-name="txns"]`)?.textContent); d.buyVol = parseValue(i.querySelector(`[data-name="buy_vol"]`)?.textContent) || 0; d.sellVol = parseValue(i.querySelector(`[data-name="sell_vol"]`)?.textContent) || 0; } else { d.buyVol = 0; d.sellVol = 0; } d.buySellVolRatio = (d.sellVol > 0) ? (d.buyVol / d.sellVol) : 100; d.botHoldersPct = (d.holderCount > 0) ? (botHolders / d.holderCount) * 100 : 0; d.isSecure = d.isLpBurned && d.isMintDisabled && d.isFreezeDisabled; d.ageInMinutes = parseValue(document.querySelector('.c-info__tab.js-info__tab:first-child .c-info__interval')?.textContent || ''); return d; } catch (error) { console.error(`[${getTimestamp()}] [FATAL] Error in getCoinData():`, error); return null; } }, analyzeCoinState: function(data, history) { if (history.length < CONFIG.MC_HISTORY_LENGTH) return 'ANALYZING'; const mcChangePct = ((data.marketCap - history[0]) / history[0]) * 100; if (mcChangePct > CONFIG.STATE_CHANGE_THRESHOLD_PUMP) return 'PUMPING'; if (mcChangePct < CONFIG.STATE_CHANGE_THRESHOLD_DUMP) return 'DUMPING'; if (Math.abs(mcChangePct) < 4) return 'CONSOLIDATING'; return 'NEUTRAL'; }, checkMomentumRide: function(data, state) { if (state === 'PUMPING' && data.buySellVolRatio > 1.15) { return 'MOMENTUM_RIDE'; } return null; }, checkAndReapTab: async function(data) { if (tradeState.inTrade || coinMemory.tradeHistory.length === 0 || coinMemory.isReaping) return; const now = Date.now(); const timeSinceEvent = now - (coinMemory.lastProfitableExitTimestamp || coinMemory.firstTradeTimestamp); if (!timeSinceEvent) return; const isDead = timeSinceEvent > CONFIG.DEAD_COIN_TIMEOUT_MS && data.marketCap < coinMemory.lastExitMarketCap; if (isDead) { coinMemory.isReaping = true; console.log(`%c[${getTimestamp()}] [SMART REAPER] Coin detected as dead. Sending final summary...`, 'color: #E56717; font-weight: bold;'); await sendToDiscord('SESSION_SUMMARY', coinMemory); console.log(`%c[${getTimestamp()}] [SMART REAPER] Summary sent. Closing tab in 5 seconds.`, 'color: #E56717; font-weight: bold;'); setTimeout(() => { window.close(); }, 5000); } }, canReEnter: function(currentMarketCap) { if (coinMemory.isBlacklisted) { if(!tradeState.inTrade) console.log(`[${getTimestamp()}] [RE-ENTRY] Blocked. Coin is blacklisted.`); return false; } if (!coinMemory.lastExitTimestamp) return true; if (Date.now() - coinMemory.lastExitTimestamp < CONFIG.RE_ENTRY_MIN_WAIT_MS) return false; const pullbackPct = ((currentMarketCap - coinMemory.lastExitMarketCap) / coinMemory.lastExitMarketCap) * 100; if (pullbackPct > CONFIG.RE_ENTRY_PULLBACK_PCT) return false; console.log(`[${getTimestamp()}] Re-entry conditions met. Pullback of ${pullbackPct.toFixed(1)}% detected.`); return true; } };
+    for(const key in unchangedFunctions) { window[key] = unchangedFunctions[key]; }
+    const boundMain = main.bind(unchangedFunctions);
+    for(const key in window) {
+        if(typeof window[key] === 'function' && !Object.keys(unchangedFunctions).includes(key) && key !== 'main') {
+             const originalFunc = window[key];
+             window[key] = function(...args) {
+                 return originalFunc.apply(unchangedFunctions, args);
+             }
+        }
+    }
+    setInterval(boundMain, CONFIG.CHECK_INTERVAL_MS);
+
+})();
